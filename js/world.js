@@ -24,7 +24,15 @@ export class World {
     const chunk = new Chunk(cx, cz)
     generateChunk(chunk)
     this.chunks.set(key, chunk)
-    chunk.buildMesh(this.scene, (wx, wy, wz) => this.getBlockWorld(wx, wy, wz))
+
+    const neighborGetter = (wx, wy, wz) => this.getBlockWorld(wx, wy, wz)
+    chunk.buildMesh(this.scene, neighborGetter)
+
+    // Rebuild already-loaded neighbors so their border faces resolve correctly
+    for (const [dx, dz] of [[-1,0],[1,0],[0,-1],[0,1]]) {
+      const neighbor = this.getChunk(cx + dx, cz + dz)
+      if (neighbor) neighbor.buildMesh(this.scene, neighborGetter)
+    }
   }
 
   unloadChunk(cx, cz) {
