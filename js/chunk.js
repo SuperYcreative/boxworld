@@ -26,7 +26,7 @@ const BLOCK_COLORS = {
   [BLOCKS.WATER]:  { top: 0x3a6eaa, side: 0x3a6eaa, bottom: 0x3a6eaa },
 }
 
-// The 6 faces of a cube: [direction, normal, 4 vertices]
+// The 6 faces of a cube: [direction, 4 corner offsets, face shade key]
 const FACES = [
   { dir: [ 0,  1,  0], corners: [[0,1,0],[1,1,0],[0,1,1],[1,1,1]], face: 'top'    }, // top
   { dir: [ 0, -1,  0], corners: [[1,0,0],[0,0,0],[1,0,1],[0,0,1]], face: 'bottom' }, // bottom
@@ -46,8 +46,8 @@ const FACE_SHADE = {
 
 export class Chunk {
   constructor(cx, cz) {
-    this.cx = cx // chunk x index
-    this.cz = cz // chunk z index
+    this.cx = cx
+    this.cz = cz
     this.data = new Uint8Array(CHUNK_SIZE * CHUNK_HEIGHT * CHUNK_SIZE)
     this.mesh = null
   }
@@ -58,7 +58,7 @@ export class Chunk {
 
   getBlock(x, y, z) {
     if (x < 0 || x >= CHUNK_SIZE || y < 0 || y >= CHUNK_HEIGHT || z < 0 || z >= CHUNK_SIZE)
-      return -1 // out of bounds
+      return -1
     return this.data[this.index(x, y, z)]
   }
 
@@ -68,7 +68,6 @@ export class Chunk {
     this.data[this.index(x, y, z)] = type
   }
 
-  // Build a Three.js mesh from the voxel data
   buildMesh(scene, getNeighborBlock) {
     if (this.mesh) {
       scene.remove(this.mesh)
@@ -89,12 +88,10 @@ export class Chunk {
           const blockColors = BLOCK_COLORS[block] || BLOCK_COLORS[BLOCKS.STONE]
 
           for (const { dir, corners, face } of FACES) {
-            // World position of neighbor
             const nx = x + dir[0]
             const ny = y + dir[1]
             const nz = z + dir[2]
 
-            // Check if neighbor is solid (if so, skip this face)
             let neighbor
             if (nx < 0 || nx >= CHUNK_SIZE || nz < 0 || nz >= CHUNK_SIZE) {
               neighbor = getNeighborBlock(
@@ -108,8 +105,9 @@ export class Chunk {
 
             if (neighbor !== BLOCKS.AIR && neighbor !== -1) continue
 
-            // Add face
-            const colorHex = blockColors[face === 'sideX' || face === 'sideZ' ? 'side' : face] || blockColors['side']
+            // Resolve which color slot to use for this face
+            const colorSlot = (face === 'sideX' || face === 'sideZ') ? 'side' : face
+            const colorHex = blockColors[colorSlot]
             const r = ((colorHex >> 16) & 255) / 255
             const g = ((colorHex >> 8)  & 255) / 255
             const b = ((colorHex)       & 255) / 255
@@ -125,9 +123,10 @@ export class Chunk {
               colors.push(r * shade, g * shade, b * shade)
             }
 
+            // Correct winding order — front faces toward the outside of the block
             indices.push(
-              vertCount, vertCount + 1, vertCount + 2,
-              vertCount + 2, vertCount + 1, vertCount + 3
+              vertCount,     vertCount + 2, vertCount + 1,
+              vertCount + 1, vertCount + 2, vertCount + 3
             )
             vertCount += 4
           }
@@ -141,9 +140,12 @@ export class Chunk {
     geometry.setIndex(indices)
     geometry.computeVertexNormals()
 
-    const material = new THREE.MeshBasicMaterial({ vertexColors: true })
+    const material = new THREE.MeshBasicMaterial({
+      vertexColors: true,
+      fog: true,
+    })
+
     this.mesh = new THREE.Mesh(geometry, material)
-    // No shadow casting or receiving — face shading handles all depth cues
     scene.add(this.mesh)
   }
 
