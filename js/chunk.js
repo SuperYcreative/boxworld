@@ -134,7 +134,7 @@ export class Chunk {
             const r = ((colorHex >> 16) & 255) / 255
             const g = ((colorHex >> 8)  & 255) / 255
             const b = ((colorHex)       & 255) / 255
-            const shade = FACE_SHADE[face]
+            const shade = isWater ? 1.0 : FACE_SHADE[face]
 
             if (isWater) {
               for (const [cx, cy, cz] of corners) {
