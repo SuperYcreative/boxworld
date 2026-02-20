@@ -15,7 +15,10 @@ export const BLOCKS = {
   WATER: 7,
 }
 
-// Colors for each block type (you can replace with textures later)
+// Which blocks are transparent/passable for face culling purposes
+const TRANSPARENT = new Set([BLOCKS.AIR, BLOCKS.WATER])
+
+// Colors for each block type
 const BLOCK_COLORS = {
   [BLOCKS.GRASS]:  { top: 0x5a9e32, side: 0x7a5c3a, bottom: 0x7a5c3a },
   [BLOCKS.DIRT]:   { top: 0x7a5c3a, side: 0x7a5c3a, bottom: 0x7a5c3a },
@@ -23,20 +26,18 @@ const BLOCK_COLORS = {
   [BLOCKS.WOOD]:   { top: 0x5c4a1e, side: 0x5c4a1e, bottom: 0x5c4a1e },
   [BLOCKS.LEAVES]: { top: 0x2d6e1e, side: 0x2d6e1e, bottom: 0x2d6e1e },
   [BLOCKS.SAND]:   { top: 0xe2d98a, side: 0xe2d98a, bottom: 0xe2d98a },
-  [BLOCKS.WATER]:  { top: 0x3a6eaa, side: 0x3a6eaa, bottom: 0x3a6eaa },
+  [BLOCKS.WATER]:  { top: 0x3a7ecc, side: 0x3a7ecc, bottom: 0x3a7ecc },
 }
 
-// The 6 faces of a cube: [direction, 4 corner offsets, face shade key]
 const FACES = [
-  { dir: [ 0,  1,  0], corners: [[0,1,0],[1,1,0],[0,1,1],[1,1,1]], face: 'top'    }, // top
-  { dir: [ 0, -1,  0], corners: [[1,0,0],[0,0,0],[1,0,1],[0,0,1]], face: 'bottom' }, // bottom
-  { dir: [-1,  0,  0], corners: [[0,0,0],[0,1,0],[0,0,1],[0,1,1]], face: 'sideX'  }, // left
-  { dir: [ 1,  0,  0], corners: [[1,1,0],[1,0,0],[1,1,1],[1,0,1]], face: 'sideX'  }, // right
-  { dir: [ 0,  0, -1], corners: [[1,0,0],[1,1,0],[0,0,0],[0,1,0]], face: 'sideZ'  }, // front
-  { dir: [ 0,  0,  1], corners: [[0,0,1],[0,1,1],[1,0,1],[1,1,1]], face: 'sideZ'  }, // back
+  { dir: [ 0,  1,  0], corners: [[0,1,0],[1,1,0],[0,1,1],[1,1,1]], face: 'top'    },
+  { dir: [ 0, -1,  0], corners: [[1,0,0],[0,0,0],[1,0,1],[0,0,1]], face: 'bottom' },
+  { dir: [-1,  0,  0], corners: [[0,0,0],[0,1,0],[0,0,1],[0,1,1]], face: 'sideX'  },
+  { dir: [ 1,  0,  0], corners: [[1,1,0],[1,0,0],[1,1,1],[1,0,1]], face: 'sideX'  },
+  { dir: [ 0,  0, -1], corners: [[1,0,0],[1,1,0],[0,0,0],[0,1,0]], face: 'sideZ'  },
+  { dir: [ 0,  0,  1], corners: [[0,0,1],[0,1,1],[1,0,1],[1,1,1]], face: 'sideZ'  },
 ]
 
-// Sharp face shading — no shadow maps needed
 const FACE_SHADE = {
   top:    1.0,
   sideZ:  0.6,
@@ -50,6 +51,7 @@ export class Chunk {
     this.cz = cz
     this.data = new Uint8Array(CHUNK_SIZE * CHUNK_HEIGHT * CHUNK_SIZE)
     this.mesh = null
+    this.waterMesh = null
   }
 
   index(x, y, z) {
@@ -69,15 +71,29 @@ export class Chunk {
   }
 
   buildMesh(scene, getNeighborBlock) {
+    // Dispose old meshes
     if (this.mesh) {
       scene.remove(this.mesh)
       this.mesh.geometry.dispose()
+      this.mesh = null
+    }
+    if (this.waterMesh) {
+      scene.remove(this.waterMesh)
+      this.waterMesh.geometry.dispose()
+      this.waterMesh = null
     }
 
+    // Opaque geometry arrays
     const positions = []
     const colors = []
     const indices = []
     let vertCount = 0
+
+    // Water geometry arrays
+    const wPositions = []
+    const wColors = []
+    const wIndices = []
+    let wVertCount = 0
 
     for (let z = 0; z < CHUNK_SIZE; z++) {
       for (let y = 0; y < CHUNK_HEIGHT; y++) {
@@ -85,6 +101,7 @@ export class Chunk {
           const block = this.getBlock(x, y, z)
           if (block === BLOCKS.AIR) continue
 
+          const isWater = block === BLOCKS.WATER
           const blockColors = BLOCK_COLORS[block] || BLOCK_COLORS[BLOCKS.STONE]
 
           for (const { dir, corners, face } of FACES) {
@@ -103,50 +120,87 @@ export class Chunk {
               neighbor = this.getBlock(nx, ny, nz)
             }
 
-            if (neighbor !== BLOCKS.AIR && neighbor !== -1) continue
+            // For opaque blocks: cull if neighbor is any non-transparent block
+            // For water: only show face if neighbor is air (not other water)
+            if (isWater) {
+              if (neighbor !== BLOCKS.AIR && neighbor !== -1) continue
+            } else {
+              if (!TRANSPARENT.has(neighbor) && neighbor !== -1) continue
+            }
 
-            // Resolve which color slot to use for this face
             const colorSlot = (face === 'sideX' || face === 'sideZ') ? 'side' : face
             const colorHex = blockColors[colorSlot]
             const r = ((colorHex >> 16) & 255) / 255
             const g = ((colorHex >> 8)  & 255) / 255
             const b = ((colorHex)       & 255) / 255
-
             const shade = FACE_SHADE[face]
 
-            for (const [cx, cy, cz] of corners) {
-              positions.push(
-                this.cx * CHUNK_SIZE + x + cx,
-                y + cy,
-                this.cz * CHUNK_SIZE + z + cz
+            if (isWater) {
+              for (const [cx, cy, cz] of corners) {
+                wPositions.push(
+                  this.cx * CHUNK_SIZE + x + cx,
+                  y + cy,
+                  this.cz * CHUNK_SIZE + z + cz
+                )
+                wColors.push(r * shade, g * shade, b * shade)
+              }
+              wIndices.push(
+                wVertCount,     wVertCount + 2, wVertCount + 1,
+                wVertCount + 1, wVertCount + 2, wVertCount + 3
               )
-              colors.push(r * shade, g * shade, b * shade)
+              wVertCount += 4
+            } else {
+              for (const [cx, cy, cz] of corners) {
+                positions.push(
+                  this.cx * CHUNK_SIZE + x + cx,
+                  y + cy,
+                  this.cz * CHUNK_SIZE + z + cz
+                )
+                colors.push(r * shade, g * shade, b * shade)
+              }
+              indices.push(
+                vertCount,     vertCount + 2, vertCount + 1,
+                vertCount + 1, vertCount + 2, vertCount + 3
+              )
+              vertCount += 4
             }
-
-            // Correct winding order — front faces toward the outside of the block
-            indices.push(
-              vertCount,     vertCount + 2, vertCount + 1,
-              vertCount + 1, vertCount + 2, vertCount + 3
-            )
-            vertCount += 4
           }
         }
       }
     }
 
-    const geometry = new THREE.BufferGeometry()
-    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
-    geometry.setAttribute('color',    new THREE.Float32BufferAttribute(colors, 3))
-    geometry.setIndex(indices)
-    geometry.computeVertexNormals()
+    // Build opaque mesh
+    if (vertCount > 0) {
+      const geometry = new THREE.BufferGeometry()
+      geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
+      geometry.setAttribute('color',    new THREE.Float32BufferAttribute(colors, 3))
+      geometry.setIndex(indices)
+      geometry.computeVertexNormals()
 
-    const material = new THREE.MeshBasicMaterial({
-      vertexColors: true,
-      fog: true,
-    })
+      const material = new THREE.MeshBasicMaterial({ vertexColors: true, fog: true })
+      this.mesh = new THREE.Mesh(geometry, material)
+      scene.add(this.mesh)
+    }
 
-    this.mesh = new THREE.Mesh(geometry, material)
-    scene.add(this.mesh)
+    // Build water mesh
+    if (wVertCount > 0) {
+      const geometry = new THREE.BufferGeometry()
+      geometry.setAttribute('position', new THREE.Float32BufferAttribute(wPositions, 3))
+      geometry.setAttribute('color',    new THREE.Float32BufferAttribute(wColors, 3))
+      geometry.setIndex(wIndices)
+      geometry.computeVertexNormals()
+
+      const material = new THREE.MeshBasicMaterial({
+        vertexColors: true,
+        fog: true,
+        transparent: true,
+        opacity: 0.72,
+        depthWrite: false, // prevents water from blocking things behind it in the depth buffer
+        side: THREE.DoubleSide, // visible from underwater too
+      })
+      this.waterMesh = new THREE.Mesh(geometry, material)
+      scene.add(this.waterMesh)
+    }
   }
 
   disposeMesh(scene) {
@@ -154,6 +208,11 @@ export class Chunk {
       scene.remove(this.mesh)
       this.mesh.geometry.dispose()
       this.mesh = null
+    }
+    if (this.waterMesh) {
+      scene.remove(this.waterMesh)
+      this.waterMesh.geometry.dispose()
+      this.waterMesh = null
     }
   }
 }
