@@ -26,7 +26,7 @@ const BLOCK_COLORS = {
   [BLOCKS.WOOD]:   { top: 0x5c4a1e, side: 0x5c4a1e, bottom: 0x5c4a1e },
   [BLOCKS.LEAVES]: { top: 0x2d6e1e, side: 0x2d6e1e, bottom: 0x2d6e1e },
   [BLOCKS.SAND]:   { top: 0xe2d98a, side: 0xe2d98a, bottom: 0xe2d98a },
-  [BLOCKS.WATER]:  { top: 0x3a7ecc, side: 0x3a7ecc, bottom: 0x3a7ecc },
+  [BLOCKS.WATER]:  { top: 0x2a5a99, side: 0x2a5a99, bottom: 0x2a5a99 },
 }
 
 const FACES = [
