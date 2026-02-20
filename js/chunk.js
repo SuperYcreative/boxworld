@@ -28,10 +28,10 @@ const BLOCK_COLORS = {
 
 // The 6 faces of a cube: [direction, normal, 4 vertices]
 const FACES = [
-  { dir: [ 0,  1,  0], corners: [[0,1,0],[1,1,0],[0,1,1],[1,1,1]], face: 'top'    }, // top
-  { dir: [ 0, -1,  0], corners: [[1,0,0],[0,0,0],[1,0,1],[0,0,1]], face: 'bottom' }, // bottom
-  { dir: [-1,  0,  0], corners: [[0,0,0],[0,1,0],[0,0,1],[0,1,1]], face: 'side'   }, // left
-  { dir: [ 1,  0,  0], corners: [[1,1,0],[1,0,0],[1,1,1],[1,0,1]], face: 'side'   }, // right
+  { dir: [ 0,  1,  0], corners: [[0,1,1],[1,1,1],[0,1,0],[1,1,0]], face: 'top'    }, // top
+  { dir: [ 0, -1,  0], corners: [[0,0,0],[1,0,0],[0,0,1],[1,0,1]], face: 'bottom' }, // bottom
+  { dir: [-1,  0,  0], corners: [[0,0,1],[0,1,1],[0,0,0],[0,1,0]], face: 'side'   }, // left
+  { dir: [ 1,  0,  0], corners: [[1,0,0],[1,1,0],[1,0,1],[1,1,1]], face: 'side'   }, // right
   { dir: [ 0,  0, -1], corners: [[1,0,0],[1,1,0],[0,0,0],[0,1,0]], face: 'side'   }, // front
   { dir: [ 0,  0,  1], corners: [[0,0,1],[0,1,1],[1,0,1],[1,1,1]], face: 'side'   }, // back
 ]
