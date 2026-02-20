@@ -71,23 +71,38 @@ export function generateChunk(chunk) {
 function placeTree(chunk, x, y, z) {
   const trunkHeight = 4
 
-  // Trunk
+  // Trunk — clamp to chunk bounds on X/Z, clamp top to CHUNK_HEIGHT
   for (let i = 0; i < trunkHeight; i++) {
+    if (y + i >= CHUNK_HEIGHT) break
+    // Trunk is always at the tree's own x,z — no offset, always in bounds
     chunk.setBlock(x, y + i, z, BLOCKS.WOOD)
   }
 
-  // Leaves (a simple 3x3x3 blob at the top, plus a top cap)
+  // Leaves — clamp each write to chunk bounds so border trees don't get silently clipped
   const top = y + trunkHeight
-  for (let dy = -1; dy <= 1; dy++) {
-    for (let dx = -2; dx <= 2; dx++) {
-      for (let dz = -2; dz <= 2; dz++) {
-        if (Math.abs(dx) === 2 && Math.abs(dz) === 2) continue // trim corners
-        chunk.setBlock(x + dx, top + dy, z + dz, BLOCKS.LEAVES)
+  for (let dy = -1; dy <= 2; dy++) {
+    const ly = top + dy
+    if (ly < 0 || ly >= CHUNK_HEIGHT) continue
+
+    // Determine leaf radius for this layer
+    const isTopCap = dy === 2
+    const radius = isTopCap ? 0 : 2
+
+    for (let dx = -radius; dx <= radius; dx++) {
+      for (let dz = -radius; dz <= radius; dz++) {
+        // Trim corners on the wide layers
+        if (radius === 2 && Math.abs(dx) === 2 && Math.abs(dz) === 2) continue
+
+        const lx = x + dx
+        const lz = z + dz
+
+        // Only write if within this chunk's bounds
+        if (lx < 0 || lx >= CHUNK_SIZE || lz < 0 || lz >= CHUNK_SIZE) continue
+
+        chunk.setBlock(lx, ly, lz, BLOCKS.LEAVES)
       }
     }
   }
-  // Top cap
-  chunk.setBlock(x, top + 2, z, BLOCKS.LEAVES)
 }
 
 export { getTerrainHeight }
