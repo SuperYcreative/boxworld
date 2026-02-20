@@ -20,6 +20,20 @@ document.body.appendChild(renderer.domElement)
 const ambient = new THREE.AmbientLight(0xffffff, 1.0)
 scene.add(ambient)
 
+// --- Underwater overlay ---
+const underwaterOverlay = document.createElement('div')
+underwaterOverlay.style.cssText = `
+  position: fixed; inset: 0;
+  background: rgba(10, 40, 80, 0.45);
+  pointer-events: none;
+  display: none;
+`
+document.body.appendChild(underwaterOverlay)
+
+const SKY_COLOR = new THREE.Color(0x87CEEB)
+const WATER_COLOR = new THREE.Color(0x0a2850)
+let wasUnderwater = false
+
 // --- World & Player ---
 const world = new World(scene)
 const player = new Player(camera, world)
@@ -67,6 +81,22 @@ function gameLoop() {
 
   player.update(dt)
   world.update(player.pos.x, player.pos.z)
+
+  // Underwater tint — check if camera is inside a water block
+  const camBlock = world.getBlockWorld(
+    Math.floor(camera.position.x),
+    Math.floor(camera.position.y),
+    Math.floor(camera.position.z)
+  )
+  const underwater = camBlock === 7 // BLOCKS.WATER
+  if (underwater !== wasUnderwater) {
+    underwaterOverlay.style.display = underwater ? 'block' : 'none'
+    scene.background = underwater ? WATER_COLOR : SKY_COLOR
+    scene.fog.color = underwater ? WATER_COLOR : SKY_COLOR
+    scene.fog.near = underwater ? 4 : 60
+    scene.fog.far = underwater ? 20 : 120
+    wasUnderwater = underwater
+  }
 
   renderer.render(scene, camera)
 }
