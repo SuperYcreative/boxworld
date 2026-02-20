@@ -11,26 +11,14 @@ const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerH
 
 const renderer = new THREE.WebGLRenderer({ antialias: true })
 renderer.setSize(window.innerWidth, window.innerHeight)
-renderer.shadowMap.enabled = true
-renderer.shadowMap.type = THREE.PCFSoftShadowMap
+// Shadow map disabled — face shading handles all depth cues
+renderer.shadowMap.enabled = false
 document.body.appendChild(renderer.domElement)
 
 // --- Lighting ---
-const ambient = new THREE.AmbientLight(0xffffff, 0.6)
+// Ambient light only — face shading in chunk.js replaces directional shadow work
+const ambient = new THREE.AmbientLight(0xffffff, 1.0)
 scene.add(ambient)
-
-const sun = new THREE.DirectionalLight(0xfffbe0, 1.2)
-sun.position.set(100, 200, 100)
-sun.castShadow = true
-sun.shadow.mapSize.width = 2048
-sun.shadow.mapSize.height = 2048
-sun.shadow.camera.near = 0.5
-sun.shadow.camera.far = 500
-sun.shadow.camera.left = -100
-sun.shadow.camera.right = 100
-sun.shadow.camera.top = 100
-sun.shadow.camera.bottom = -100
-scene.add(sun)
 
 // --- World & Player ---
 const world = new World(scene)
@@ -84,17 +72,3 @@ function gameLoop() {
 }
 
 gameLoop()
-```
-
----
-
-That's all the files! Here's a checklist of everything you should have:
-```
-index.html
-js/
-  main.js
-  noise.js
-  chunk.js
-  terrain.js
-  world.js
-  player.js
