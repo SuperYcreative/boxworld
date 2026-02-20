@@ -4,8 +4,8 @@ import { Player } from './player.js'
 
 // --- Scene setup ---
 const scene = new THREE.Scene()
-scene.background = new THREE.Color(0x87CEEB) // sky blue
-scene.fog = new THREE.Fog(0x87CEEB, 60, 120)
+scene.background = new THREE.Color(0x00B0FF) // sky blue
+scene.fog = new THREE.Fog(0x00B0FF, 60, 120)
 
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000)
 
@@ -30,7 +30,7 @@ underwaterOverlay.style.cssText = `
 `
 document.body.appendChild(underwaterOverlay)
 
-const SKY_COLOR = new THREE.Color(0x87CEEB)
+const SKY_COLOR = new THREE.Color(0x00B0FF)
 const WATER_COLOR = new THREE.Color(0x0a2850)
 let wasUnderwater = false
 
