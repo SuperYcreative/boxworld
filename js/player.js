@@ -4,7 +4,7 @@ import { BLOCKS, CHUNK_SIZE } from './chunk.js'
 const GRAVITY = -28
 const JUMP_FORCE = 10
 const MOVE_SPEED = 6
-const PLAYER_HEIGHT = 1.7
+const PLAYER_HEIGHT = 1.5
 const PLAYER_WIDTH = 0.4
 const REACH = 5 // how far you can break/place blocks
 
@@ -82,7 +82,6 @@ export class Player {
   }
 
   handleMovement(dt) {
-    // Get forward/right vectors (ignore vertical component)
     const forward = new THREE.Vector3(
       -Math.sin(this.yaw), 0, -Math.cos(this.yaw)
     )
@@ -110,10 +109,8 @@ export class Player {
   }
 
   applyPhysics(dt) {
-    // Gravity
     this.vel.y += GRAVITY * dt
 
-    // Move and collide each axis separately
     this.pos.x += this.vel.x * dt
     this.collideAxis('x')
 
@@ -129,7 +126,6 @@ export class Player {
     const offsets = []
 
     if (axis === 'y') {
-      // Check feet and head
       offsets.push(
         [0, 0, 0],
         [0, PLAYER_HEIGHT, 0]
@@ -170,11 +166,9 @@ export class Player {
       }
     }
 
-    // If moving down and no collision, not on ground
     if (axis === 'y' && this.vel.y !== 0) this.onGround = false
   }
 
-  // Raycast into the world to find which block the player is looking at
   raycast() {
     const dir = new THREE.Vector3(0, 0, -1)
     dir.applyEuler(new THREE.Euler(this.pitch, this.yaw, 0, 'YXZ'))
@@ -213,7 +207,6 @@ export class Player {
     const result = this.raycast()
     if (result && result.before) {
       const { x, y, z } = result.before
-      // Don't place inside the player
       const px = Math.floor(this.pos.x)
       const py = Math.floor(this.pos.y)
       const pz = Math.floor(this.pos.z)
