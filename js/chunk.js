@@ -123,7 +123,8 @@ export class Chunk {
             // For opaque blocks: cull if neighbor is any non-transparent block
             // For water: only show face if neighbor is air (not other water)
             if (isWater) {
-              if (neighbor !== BLOCKS.AIR && neighbor !== -1) continue
+              // Only show water face if neighbor is truly air — not unloaded (-1) or other water
+              if (neighbor !== BLOCKS.AIR) continue
             } else {
               if (!TRANSPARENT.has(neighbor) && neighbor !== -1) continue
             }
