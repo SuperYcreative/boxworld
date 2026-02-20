@@ -69,7 +69,7 @@ export class World {
     return chunk.getBlock(lx, wy, lz)
   }
 
-  // Set a block at world coordinates and rebuild affected chunk
+  // Set a block at world coordinates and rebuild affected chunk(s)
   setBlockWorld(wx, wy, wz, type) {
     const cx = Math.floor(wx / CHUNK_SIZE)
     const cz = Math.floor(wz / CHUNK_SIZE)
@@ -78,7 +78,28 @@ export class World {
     const lx = ((wx % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE
     const lz = ((wz % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE
     chunk.setBlock(lx, wy, lz, type)
-    chunk.buildMesh(this.scene, (wx, wy, wz) => this.getBlockWorld(wx, wy, wz))
+
+    // Always rebuild the chunk that was modified
+    const neighborGetter = (wx, wy, wz) => this.getBlockWorld(wx, wy, wz)
+    chunk.buildMesh(this.scene, neighborGetter)
+
+    // If the block is on a chunk border, rebuild the neighboring chunk too
+    // so its exposed faces stay in sync
+    if (lx === 0) {
+      const neighbor = this.getChunk(cx - 1, cz)
+      if (neighbor) neighbor.buildMesh(this.scene, neighborGetter)
+    } else if (lx === CHUNK_SIZE - 1) {
+      const neighbor = this.getChunk(cx + 1, cz)
+      if (neighbor) neighbor.buildMesh(this.scene, neighborGetter)
+    }
+
+    if (lz === 0) {
+      const neighbor = this.getChunk(cx, cz - 1)
+      if (neighbor) neighbor.buildMesh(this.scene, neighborGetter)
+    } else if (lz === CHUNK_SIZE - 1) {
+      const neighbor = this.getChunk(cx, cz + 1)
+      if (neighbor) neighbor.buildMesh(this.scene, neighborGetter)
+    }
   }
 
   // Get the surface height at a world x,z (used to spawn player)
