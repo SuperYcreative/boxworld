@@ -28,13 +28,21 @@ const BLOCK_COLORS = {
 
 // The 6 faces of a cube: [direction, normal, 4 vertices]
 const FACES = [
-  { dir: [ 0,  1,  0], corners: [[0,1,1],[1,1,1],[0,1,0],[1,1,0]], face: 'top'    }, // top
-  { dir: [ 0, -1,  0], corners: [[0,0,0],[1,0,0],[0,0,1],[1,0,1]], face: 'bottom' }, // bottom
-  { dir: [-1,  0,  0], corners: [[0,0,1],[0,1,1],[0,0,0],[0,1,0]], face: 'side'   }, // left
-  { dir: [ 1,  0,  0], corners: [[1,0,0],[1,1,0],[1,0,1],[1,1,1]], face: 'side'   }, // right
-  { dir: [ 0,  0, -1], corners: [[0,0,0],[0,1,0],[1,0,0],[1,1,0]], face: 'side'   }, // front
-  { dir: [ 0,  0,  1], corners: [[1,0,1],[1,1,1],[0,0,1],[0,1,1]], face: 'side'   }, // back
+  { dir: [ 0,  1,  0], corners: [[0,1,0],[1,1,0],[0,1,1],[1,1,1]], face: 'top'    }, // top
+  { dir: [ 0, -1,  0], corners: [[1,0,0],[0,0,0],[1,0,1],[0,0,1]], face: 'bottom' }, // bottom
+  { dir: [-1,  0,  0], corners: [[0,0,0],[0,1,0],[0,0,1],[0,1,1]], face: 'sideX'  }, // left
+  { dir: [ 1,  0,  0], corners: [[1,1,0],[1,0,0],[1,1,1],[1,0,1]], face: 'sideX'  }, // right
+  { dir: [ 0,  0, -1], corners: [[1,0,0],[1,1,0],[0,0,0],[0,1,0]], face: 'sideZ'  }, // front
+  { dir: [ 0,  0,  1], corners: [[0,0,1],[0,1,1],[1,0,1],[1,1,1]], face: 'sideZ'  }, // back
 ]
+
+// Sharp face shading — no shadow maps needed
+const FACE_SHADE = {
+  top:    1.0,
+  sideZ:  0.6,
+  sideX:  0.5,
+  bottom: 0.3,
+}
 
 export class Chunk {
   constructor(cx, cz) {
@@ -101,13 +109,12 @@ export class Chunk {
             if (neighbor !== BLOCKS.AIR && neighbor !== -1) continue
 
             // Add face
-            const colorHex = blockColors[face]
+            const colorHex = blockColors[face === 'sideX' || face === 'sideZ' ? 'side' : face] || blockColors['side']
             const r = ((colorHex >> 16) & 255) / 255
             const g = ((colorHex >> 8)  & 255) / 255
             const b = ((colorHex)       & 255) / 255
 
-            // Slight shading per face direction
-            const shade = face === 'top' ? 1.0 : face === 'bottom' ? 0.5 : 0.75
+            const shade = FACE_SHADE[face]
 
             for (const [cx, cy, cz] of corners) {
               positions.push(
@@ -134,10 +141,9 @@ export class Chunk {
     geometry.setIndex(indices)
     geometry.computeVertexNormals()
 
-    const material = new THREE.MeshLambertMaterial({ vertexColors: true })
+    const material = new THREE.MeshBasicMaterial({ vertexColors: true })
     this.mesh = new THREE.Mesh(geometry, material)
-    this.mesh.castShadow = true
-    this.mesh.receiveShadow = true
+    // No shadow casting or receiving — face shading handles all depth cues
     scene.add(this.mesh)
   }
 
