@@ -26,7 +26,7 @@ const BLOCK_COLORS = {
   [BLOCKS.WATER]:  { top: 0x3a6eaa, side: 0x3a6eaa, bottom: 0x3a6eaa },
 }
 
-// The 6 faces of a cube: direction vector, corner offsets, face group for shading
+// The 6 faces of a cube: direction vector (= outward normal), corner offsets, face group for shading
 const FACES = [
   { dir: [ 0,  1,  0], corners: [[0,1,0],[1,1,0],[0,1,1],[1,1,1]], face: 'top'    },
   { dir: [ 0, -1,  0], corners: [[1,0,0],[0,0,0],[1,0,1],[0,0,1]], face: 'bottom' },
@@ -78,6 +78,7 @@ export class Chunk {
     }
 
     const positions  = []
+    const normals    = []
     const colors     = []
     const indices    = []
     let   vertCount  = 0
@@ -106,7 +107,9 @@ export class Chunk {
               neighbor = this.getBlock(nx, ny, nz)
             }
 
-            if (neighbor !== BLOCKS.AIR && neighbor !== -1) continue
+            // Draw this face if the neighbor is transparent (air, water) or out of bounds.
+            const transparent = neighbor === BLOCKS.AIR || neighbor === BLOCKS.WATER || neighbor === -1
+            if (!transparent) continue
 
             const colorHex = blockColors[face]
             const r = ((colorHex >> 16) & 255) / 255
@@ -114,13 +117,14 @@ export class Chunk {
             const b = ((colorHex)       & 255) / 255
             const shade = face === 'top' ? 1.0 : face === 'bottom' ? 0.5 : 0.75
 
-            // Renamed cx/cy/cz → ox/oy/oz to avoid shadowing this.cx (#14)
             for (const [ox, oy, oz] of corners) {
               positions.push(
                 this.cx * CHUNK_SIZE + x + ox,
                 y + oy,
                 this.cz * CHUNK_SIZE + z + oz
               )
+              // Explicit outward normal from the face direction — no computeVertexNormals needed
+              normals.push(dir[0], dir[1], dir[2])
               colors.push(r * shade, g * shade, b * shade)
             }
 
@@ -136,9 +140,10 @@ export class Chunk {
 
     const geometry = new THREE.BufferGeometry()
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
-    geometry.setAttribute('color',    new THREE.Float32BufferAttribute(colors, 3))
+    geometry.setAttribute('normal',   new THREE.Float32BufferAttribute(normals,   3))
+    geometry.setAttribute('color',    new THREE.Float32BufferAttribute(colors,    3))
     geometry.setIndex(indices)
-    geometry.computeVertexNormals()
+    // No computeVertexNormals — we set exact outward normals per face above
 
     // Reuse the shared material — no per-chunk material allocation (#20)
     this.mesh = new THREE.Mesh(geometry, SHARED_MATERIAL)
