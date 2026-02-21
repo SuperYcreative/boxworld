@@ -1,44 +1,43 @@
 import * as THREE from 'three'
 import { World } from './world.js'
 import { Player } from './player.js'
+import { BLOCKS } from './chunk.js'
 
 // --- Scene setup ---
 const scene = new THREE.Scene()
-scene.background = new THREE.Color(0x00B0FF) // sky blue
-scene.fog = new THREE.Fog(0x00B0FF, 60, 120)
+scene.background = new THREE.Color(0x87CEEB)
+scene.fog = new THREE.Fog(0x87CEEB, 60, 120)
 
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000)
 
 const renderer = new THREE.WebGLRenderer({ antialias: true })
 renderer.setSize(window.innerWidth, window.innerHeight)
-// Shadow map disabled — face shading handles all depth cues
-renderer.shadowMap.enabled = false
+renderer.shadowMap.enabled = true
+renderer.shadowMap.type = THREE.PCFSoftShadowMap
 document.body.appendChild(renderer.domElement)
 
 // --- Lighting ---
-// Ambient light only — face shading in chunk.js replaces directional shadow work
-const ambient = new THREE.AmbientLight(0xffffff, 1.0)
+const ambient = new THREE.AmbientLight(0xffffff, 0.6)
 scene.add(ambient)
 
-// --- Underwater overlay ---
-const underwaterOverlay = document.createElement('div')
-underwaterOverlay.style.cssText = `
-  position: fixed; inset: 0;
-  background: rgba(10, 40, 80, 0.45);
-  pointer-events: none;
-  display: none;
-`
-document.body.appendChild(underwaterOverlay)
-
-const SKY_COLOR = new THREE.Color(0x00B0FF)
-const WATER_COLOR = new THREE.Color(0x0a2850)
-let wasUnderwater = false
+const sun = new THREE.DirectionalLight(0xfffbe0, 1.2)
+sun.position.set(100, 200, 100)
+sun.castShadow = true
+sun.shadow.mapSize.width  = 2048
+sun.shadow.mapSize.height = 2048
+sun.shadow.camera.near   = 0.5
+sun.shadow.camera.far    = 500
+sun.shadow.camera.left   = -100
+sun.shadow.camera.right  =  100
+sun.shadow.camera.top    =  100
+sun.shadow.camera.bottom = -100
+scene.add(sun)
 
 // --- World & Player ---
-const world = new World(scene)
+const world  = new World(scene)
 const player = new Player(camera, world)
 
-// Spawn player — do an initial world load first so terrain height is available
+// Pre-load spawn area so terrain height is available before player.spawn()
 const spawnCX = 0, spawnCZ = 0
 for (let dx = -2; dx <= 2; dx++) {
   for (let dz = -2; dz <= 2; dz++) {
@@ -47,7 +46,7 @@ for (let dx = -2; dx <= 2; dx++) {
 }
 player.spawn()
 
-// --- Pointer lock (click to play) ---
+// --- Pointer lock ---
 const blocker = document.getElementById('blocker')
 
 blocker.addEventListener('click', () => {
@@ -55,14 +54,48 @@ blocker.addEventListener('click', () => {
 })
 
 document.addEventListener('pointerlockchange', () => {
-  if (document.pointerLockElement) {
-    blocker.style.display = 'none'
-  } else {
-    blocker.style.display = 'flex'
-  }
+  blocker.style.display = document.pointerLockElement ? 'none' : 'flex'
 })
 
-// --- Handle window resize ---
+// --- Block selection HUD (#18) ---
+// Displays which block the player currently has selected in the bottom-center of the screen.
+const BLOCK_NAMES = {
+  [BLOCKS.GRASS]:  'Grass',
+  [BLOCKS.DIRT]:   'Dirt',
+  [BLOCKS.STONE]:  'Stone',
+  [BLOCKS.WOOD]:   'Wood',
+  [BLOCKS.LEAVES]: 'Leaves',
+  [BLOCKS.SAND]:   'Sand',
+}
+
+const hud = document.createElement('div')
+hud.style.cssText = `
+  position: fixed;
+  bottom: 48px;
+  left: 50%;
+  transform: translateX(-50%);
+  color: white;
+  font-family: monospace;
+  font-size: 15px;
+  pointer-events: none;
+  text-shadow: 1px 1px 2px black;
+  background: rgba(0,0,0,0.35);
+  padding: 4px 14px;
+  border-radius: 4px;
+`
+document.body.appendChild(hud)
+
+function updateHUD() {
+  hud.textContent = `Block: ${BLOCK_NAMES[player.selectedBlock] ?? 'Unknown'} (1–6 to switch)`
+}
+updateHUD()
+
+// Refresh HUD whenever a digit key is pressed
+document.addEventListener('keydown', e => {
+  if (e.code.startsWith('Digit')) updateHUD()
+})
+
+// --- Window resize ---
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight
   camera.updateProjectionMatrix()
@@ -76,27 +109,11 @@ function gameLoop() {
   requestAnimationFrame(gameLoop)
 
   const now = performance.now()
-  const dt = Math.min((now - lastTime) / 1000, 0.05) // cap dt to avoid huge jumps
-  lastTime = now
+  const dt  = Math.min((now - lastTime) / 1000, 0.05) // cap dt to prevent physics explosions
+  lastTime  = now
 
   player.update(dt)
   world.update(player.pos.x, player.pos.z)
-
-  // Underwater tint — check if camera is inside a water block
-  const camBlock = world.getBlockWorld(
-    Math.floor(camera.position.x),
-    Math.floor(camera.position.y),
-    Math.floor(camera.position.z)
-  )
-  const underwater = camBlock === 7 // BLOCKS.WATER
-  if (underwater !== wasUnderwater) {
-    underwaterOverlay.style.display = underwater ? 'block' : 'none'
-    scene.background = underwater ? WATER_COLOR : SKY_COLOR
-    scene.fog.color = underwater ? WATER_COLOR : SKY_COLOR
-    scene.fog.near = underwater ? 4 : 60
-    scene.fog.far = underwater ? 20 : 120
-    wasUnderwater = underwater
-  }
 
   renderer.render(scene, camera)
 }
