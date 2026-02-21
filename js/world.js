@@ -2,14 +2,14 @@ import * as THREE from 'three'
 import { Chunk, BLOCKS, CHUNK_SIZE } from './chunk.js'
 import { generateChunk, getTerrainHeight } from './terrain.js'
 
-const RENDER_DISTANCE = 4 // chunks in each direction
+const RENDER_DISTANCE = 4
 
 export class World {
   constructor(scene) {
-    this.scene = scene
+    this.scene  = scene
     this.chunks = new Map() // key: "cx,cz" -> Chunk
 
-    // Track last chunk the player was in to avoid redundant load scans (#8)
+    // Track last chunk position to skip redundant load scans (#8)
     this._lastPCX = null
     this._lastPCZ = null
   }
@@ -32,7 +32,7 @@ export class World {
   }
 
   unloadChunk(cx, cz) {
-    const key = this.chunkKey(cx, cz)
+    const key   = this.chunkKey(cx, cz)
     const chunk = this.chunks.get(key)
     if (chunk) {
       chunk.disposeMesh(this.scene)
@@ -40,8 +40,7 @@ export class World {
     }
   }
 
-  // Call this every frame with player's world position.
-  // Only rescans for chunks to load/unload when the player crosses a chunk boundary. (#8)
+  // Only rescans when the player crosses a chunk boundary (#8)
   update(px, pz) {
     const pcx = Math.floor(px / CHUNK_SIZE)
     const pcz = Math.floor(pz / CHUNK_SIZE)
@@ -50,14 +49,12 @@ export class World {
     this._lastPCX = pcx
     this._lastPCZ = pcz
 
-    // Load chunks in range
     for (let dx = -RENDER_DISTANCE; dx <= RENDER_DISTANCE; dx++) {
       for (let dz = -RENDER_DISTANCE; dz <= RENDER_DISTANCE; dz++) {
         this.loadChunk(pcx + dx, pcz + dz)
       }
     }
 
-    // Unload chunks out of range
     for (const [, chunk] of this.chunks) {
       const distX = Math.abs(chunk.cx - pcx)
       const distZ = Math.abs(chunk.cz - pcz)
@@ -67,10 +64,9 @@ export class World {
     }
   }
 
-  // Get a block at world coordinates
   getBlockWorld(wx, wy, wz) {
-    const cx = Math.floor(wx / CHUNK_SIZE)
-    const cz = Math.floor(wz / CHUNK_SIZE)
+    const cx    = Math.floor(wx / CHUNK_SIZE)
+    const cz    = Math.floor(wz / CHUNK_SIZE)
     const chunk = this.getChunk(cx, cz)
     if (!chunk) return BLOCKS.AIR
     const lx = ((wx % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE
@@ -78,11 +74,10 @@ export class World {
     return chunk.getBlock(lx, wy, lz)
   }
 
-  // Set a block at world coordinates, rebuild the affected chunk, and rebuild
-  // any neighboring chunks whose border this block touches. (#2)
+  // Rebuild the edited chunk, plus any neighbor chunks the edit touches (#2)
   setBlockWorld(wx, wy, wz, type) {
-    const cx = Math.floor(wx / CHUNK_SIZE)
-    const cz = Math.floor(wz / CHUNK_SIZE)
+    const cx    = Math.floor(wx / CHUNK_SIZE)
+    const cz    = Math.floor(wz / CHUNK_SIZE)
     const chunk = this.getChunk(cx, cz)
     if (!chunk) return
 
@@ -90,23 +85,20 @@ export class World {
     const lz = ((wz % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE
     chunk.setBlock(lx, wy, lz, type)
 
-    const neighborGetter = (wx, wy, wz) => this.getBlockWorld(wx, wy, wz)
-    chunk.buildMesh(this.scene, neighborGetter)
+    const nb = (wx, wy, wz) => this.getBlockWorld(wx, wy, wz)
+    chunk.buildMesh(this.scene, nb)
 
-    // Rebuild neighbors if the edited block is on a chunk border
-    if (lx === 0)              this._rebuildChunk(cx - 1, cz, neighborGetter)
-    if (lx === CHUNK_SIZE - 1) this._rebuildChunk(cx + 1, cz, neighborGetter)
-    if (lz === 0)              this._rebuildChunk(cx, cz - 1, neighborGetter)
-    if (lz === CHUNK_SIZE - 1) this._rebuildChunk(cx, cz + 1, neighborGetter)
+    if (lx === 0)              this._rebuildIfLoaded(cx - 1, cz, nb)
+    if (lx === CHUNK_SIZE - 1) this._rebuildIfLoaded(cx + 1, cz, nb)
+    if (lz === 0)              this._rebuildIfLoaded(cx, cz - 1, nb)
+    if (lz === CHUNK_SIZE - 1) this._rebuildIfLoaded(cx, cz + 1, nb)
   }
 
-  // Rebuild a chunk's mesh only if it is currently loaded
-  _rebuildChunk(cx, cz, neighborGetter) {
+  _rebuildIfLoaded(cx, cz, nb) {
     const chunk = this.getChunk(cx, cz)
-    if (chunk) chunk.buildMesh(this.scene, neighborGetter)
+    if (chunk) chunk.buildMesh(this.scene, nb)
   }
 
-  // Get the surface height at a world x,z (used to spawn player)
   getSurfaceHeight(wx, wz) {
     return getTerrainHeight(wx, wz)
   }
