@@ -1,5 +1,5 @@
 // Classic 2D Perlin noise for terrain generation.
-// Renamed from SimplexNoise to PerlinNoise — this is Perlin, not Simplex. (#13)
+// (Renamed from SimplexNoise — this implements Perlin, not Simplex.) (#13)
 
 export class PerlinNoise {
   constructor(seed = Math.random()) {
@@ -9,8 +9,7 @@ export class PerlinNoise {
 
     // LCG shuffle based on seed (Park-Miller)
     let s = seed * 2147483647 | 0
-    // Guard against seed === 0 which causes the LCG to produce all zeros (#15)
-    if (s === 0) s = 1
+    if (s === 0) s = 1 // guard: seed=0 degenerates the LCG (#15)
     for (let i = 255; i > 0; i--) {
       s = (s * 16807) % 2147483647
       const j = s % (i + 1)
@@ -22,8 +21,7 @@ export class PerlinNoise {
   fade(t) { return t * t * t * (t * (t * 6 - 15) + 10) }
   lerp(a, b, t) { return a + t * (b - a) }
 
-  // 8-direction gradient table for reduced diagonal bias (#22)
-  // Replaces the original 4-direction (hash & 3) version
+  // 8-direction gradient table — reduces diagonal bias vs the original 4-direction version (#22)
   grad(hash, x, y) {
     switch (hash & 7) {
       case 0: return  x + y
@@ -34,6 +32,7 @@ export class PerlinNoise {
       case 5: return -x
       case 6: return  y
       case 7: return -y
+      default: return 0
     }
   }
 
