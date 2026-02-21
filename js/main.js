@@ -37,11 +37,10 @@ scene.add(sun)
 const world  = new World(scene)
 const player = new Player(camera, world)
 
-// Pre-load spawn area so terrain height is available before player.spawn()
-const spawnCX = 0, spawnCZ = 0
+// Pre-load spawn area before placing the player (#spawn fix)
 for (let dx = -2; dx <= 2; dx++) {
   for (let dz = -2; dz <= 2; dz++) {
-    world.loadChunk(spawnCX + dx, spawnCZ + dz)
+    world.loadChunk(dx, dz)
   }
 }
 player.spawn()
@@ -58,7 +57,6 @@ document.addEventListener('pointerlockchange', () => {
 })
 
 // --- Block selection HUD (#18) ---
-// Displays which block the player currently has selected in the bottom-center of the screen.
 const BLOCK_NAMES = {
   [BLOCKS.GRASS]:  'Grass',
   [BLOCKS.DIRT]:   'Dirt',
@@ -86,11 +84,10 @@ hud.style.cssText = `
 document.body.appendChild(hud)
 
 function updateHUD() {
-  hud.textContent = `Block: ${BLOCK_NAMES[player.selectedBlock] ?? 'Unknown'} (1–6 to switch)`
+  hud.textContent = `Block: ${BLOCK_NAMES[player.selectedBlock] ?? 'Unknown'}  [1–6 to switch]`
 }
 updateHUD()
 
-// Refresh HUD whenever a digit key is pressed
 document.addEventListener('keydown', e => {
   if (e.code.startsWith('Digit')) updateHUD()
 })
@@ -109,7 +106,7 @@ function gameLoop() {
   requestAnimationFrame(gameLoop)
 
   const now = performance.now()
-  const dt  = Math.min((now - lastTime) / 1000, 0.05) // cap dt to prevent physics explosions
+  const dt  = Math.min((now - lastTime) / 1000, 0.05)
   lastTime  = now
 
   player.update(dt)
