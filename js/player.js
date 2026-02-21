@@ -1,15 +1,15 @@
 import * as THREE from 'three'
 import { BLOCKS } from './chunk.js'
 
-const GRAVITY        = -28
-const WATER_GRAVITY  = -6   // reduced gravity while submerged (#19)
-const SWIM_FORCE     =  5   // upward force when Space is held underwater (#19)
-const WATER_DRAG     =  0.8 // velocity damping per second while in water (#19)
-const JUMP_FORCE     = 10
-const MOVE_SPEED     = 6
-const PLAYER_HEIGHT  = 1.7
-const PLAYER_WIDTH   = 0.4
-const REACH          = 5
+const GRAVITY       = -28
+const WATER_GRAVITY =  -6  // reduced gravity while submerged (#19)
+const SWIM_FORCE    =   5  // max upward velocity while swimming (#19)
+const WATER_DRAG    =   8  // vertical velocity damping (units/s) while in water (#19)
+const JUMP_FORCE    =  10
+const MOVE_SPEED    =   6
+const PLAYER_HEIGHT =   1.7
+const PLAYER_WIDTH  =   0.4
+const REACH         =   5
 
 export class Player {
   constructor(camera, world) {
@@ -25,12 +25,13 @@ export class Player {
 
     this.selectedBlock = BLOCKS.GRASS
 
-    // Reusable vectors — allocated once, never inside the game loop (#6, #7)
+    // Reusable vectors — never allocated inside the game loop (#6, #7)
     this._forward = new THREE.Vector3()
     this._right   = new THREE.Vector3()
     this._move    = new THREE.Vector3()
-    this._rayPos  = new THREE.Vector3()
     this._rayDir  = new THREE.Vector3()
+    this._rayPos  = new THREE.Vector3()
+    this._euler   = new THREE.Euler(0, 0, 0, 'YXZ')
 
     this.keys = {}
     this.initControls()
@@ -87,12 +88,11 @@ export class Player {
     this.camera.rotation.x = this.pitch
   }
 
-  // Returns true if the player's eye/mid point is inside a water block (#19)
   _isInWater() {
-    const eyeY = Math.floor(this.pos.y + PLAYER_HEIGHT * 0.5)
-    const bx   = Math.floor(this.pos.x)
-    const bz   = Math.floor(this.pos.z)
-    return this.world.getBlockWorld(bx, eyeY, bz) === BLOCKS.WATER
+    const bx = Math.floor(this.pos.x)
+    const by = Math.floor(this.pos.y + PLAYER_HEIGHT * 0.5)
+    const bz = Math.floor(this.pos.z)
+    return this.world.getBlockWorld(bx, by, bz) === BLOCKS.WATER
   }
 
   handleMovement(dt) {
@@ -116,14 +116,13 @@ export class Player {
     const inWater = this._isInWater()
 
     if (inWater) {
-      // Swim upward when Space held; water drag slows vertical fall (#19)
+      // Space swims upward while submerged (#19)
       if (this.keys['Space']) {
-        this.vel.y += SWIM_FORCE * dt * 60 * dt // impulse-style, frame-rate independent
-        if (this.vel.y > SWIM_FORCE) this.vel.y = SWIM_FORCE
+        this.vel.y = Math.min(this.vel.y + SWIM_FORCE * dt * 20, SWIM_FORCE)
       }
     } else {
       if (this.keys['Space'] && this.onGround) {
-        this.vel.y = JUMP_FORCE
+        this.vel.y    = JUMP_FORCE
         this.onGround = false
       }
     }
@@ -132,15 +131,14 @@ export class Player {
   applyPhysics(dt) {
     const inWater = this._isInWater()
 
-    // Apply appropriate gravity (#19)
     this.vel.y += (inWater ? WATER_GRAVITY : GRAVITY) * dt
 
-    // Apply water drag to vertical velocity (#19)
-    if (inWater) {
-      this.vel.y *= Math.pow(1 - WATER_DRAG, dt)
+    // Damp vertical velocity in water (#19)
+    if (inWater && this.vel.y < 0) {
+      this.vel.y += WATER_DRAG * dt
+      if (this.vel.y > 0) this.vel.y = 0
     }
 
-    // Axis-separated movement and collision
     this.pos.x += this.vel.x * dt
     this.collideAxis('x')
 
@@ -154,17 +152,43 @@ export class Player {
   collideAxis(axis) {
     const w = PLAYER_WIDTH / 2
 
-    // Y axis now checks all four bottom corners and all four top corners (#3)
-    // X and Z axes check four edges along full player height
-    const offsets = []
-
     if (axis === 'y') {
-      // Four corners at feet and four at head
-      for (const [sx, sz] of [[-w, -w], [w, -w], [-w, w], [w, w]]) {
-        offsets.push([sx, 0,             sz]) // feet
-        offsets.push([sx, PLAYER_HEIGHT, sz]) // head
+      // Separate feet/head checks so their resolution can't interfere (#3)
+      const corners = [[-w, -w], [w, -w], [-w, w], [w, w]]
+
+      if (this.vel.y <= 0) {
+        for (const [sx, sz] of corners) {
+          const bx    = Math.floor(this.pos.x + sx)
+          const by    = Math.floor(this.pos.y)
+          const bz    = Math.floor(this.pos.z + sz)
+          const block = this.world.getBlockWorld(bx, by, bz)
+          if (block !== BLOCKS.AIR && block !== BLOCKS.WATER && block > 0) {
+            this.pos.y    = by + 1
+            this.vel.y    = 0
+            this.onGround = true
+            return
+          }
+        }
+      } else {
+        for (const [sx, sz] of corners) {
+          const bx    = Math.floor(this.pos.x + sx)
+          const by    = Math.floor(this.pos.y + PLAYER_HEIGHT)
+          const bz    = Math.floor(this.pos.z + sz)
+          const block = this.world.getBlockWorld(bx, by, bz)
+          if (block !== BLOCKS.AIR && block !== BLOCKS.WATER && block > 0) {
+            this.pos.y = by - PLAYER_HEIGHT
+            this.vel.y = 0
+            return
+          }
+        }
       }
-    } else if (axis === 'x') {
+
+      if (this.vel.y !== 0) this.onGround = false
+      return
+    }
+
+    const offsets = []
+    if (axis === 'x') {
       for (let dy = 0; dy <= Math.ceil(PLAYER_HEIGHT); dy++) {
         offsets.push([ w, dy, 0], [-w, dy, 0])
       }
@@ -181,15 +205,7 @@ export class Player {
       const block = this.world.getBlockWorld(bx, by, bz)
 
       if (block !== BLOCKS.AIR && block !== BLOCKS.WATER && block > 0) {
-        if (axis === 'y') {
-          if (this.vel.y < 0) {
-            this.pos.y    = by + 1
-            this.onGround = true
-          } else {
-            this.pos.y = by - PLAYER_HEIGHT
-          }
-          this.vel.y = 0
-        } else if (axis === 'x') {
+        if (axis === 'x') {
           this.pos.x = ox > 0 ? bx - w : bx + 1 + w
           this.vel.x = 0
         } else {
@@ -199,70 +215,57 @@ export class Player {
         break
       }
     }
-
-    if (axis === 'y' && this.vel.y !== 0) this.onGround = false
   }
 
-  // DDA raycast — exact, fast, no floating-point step accumulation (#11)
-  // Returns { hit: {x,y,z}, before: {x,y,z} } or null
+  // DDA raycast — exact voxel traversal, no floating point step accumulation (#11)
   raycast() {
-    // Build direction vector from current look angles, reusing class vector (#7)
-    this._rayDir.set(0, 0, -1).applyEuler(
-      new THREE.Euler(this.pitch, this.yaw, 0, 'YXZ')
-    )
+    this._euler.set(this.pitch, this.yaw, 0)
+    this._rayDir.set(0, 0, -1).applyEuler(this._euler)
     this._rayPos.copy(this.camera.position)
 
     const dx = this._rayDir.x
     const dy = this._rayDir.y
     const dz = this._rayDir.z
 
-    // Current voxel
     let ix = Math.floor(this._rayPos.x)
     let iy = Math.floor(this._rayPos.y)
     let iz = Math.floor(this._rayPos.z)
 
-    // Step direction per axis
     const stepX = dx >= 0 ? 1 : -1
     const stepY = dy >= 0 ? 1 : -1
     const stepZ = dz >= 0 ? 1 : -1
 
-    // How far along the ray we must travel for one voxel step on each axis
     const tDeltaX = Math.abs(1 / dx)
     const tDeltaY = Math.abs(1 / dy)
     const tDeltaZ = Math.abs(1 / dz)
 
-    // Initial distances to the first voxel boundary on each axis
     const ox = this._rayPos.x - ix
     const oy = this._rayPos.y - iy
     const oz = this._rayPos.z - iz
 
-    let tMaxX = dx === 0 ? Infinity : (dx > 0 ? (1 - ox) : ox) / Math.abs(dx)
-    let tMaxY = dy === 0 ? Infinity : (dy > 0 ? (1 - oy) : oy) / Math.abs(dy)
-    let tMaxZ = dz === 0 ? Infinity : (dz > 0 ? (1 - oz) : oz) / Math.abs(dz)
+    let tMaxX = dx === 0 ? Infinity : (dx > 0 ? 1 - ox : ox) / Math.abs(dx)
+    let tMaxY = dy === 0 ? Infinity : (dy > 0 ? 1 - oy : oy) / Math.abs(dy)
+    let tMaxZ = dz === 0 ? Infinity : (dz > 0 ? 1 - oz : oz) / Math.abs(dz)
 
-    let lastIX = ix, lastIY = iy, lastIZ = iz
+    let lx = ix, ly = iy, lz = iz
 
     while (Math.min(tMaxX, tMaxY, tMaxZ) < REACH) {
-      // Advance to the next voxel boundary on the nearest axis
       if (tMaxX < tMaxY && tMaxX < tMaxZ) {
-        lastIX = ix; lastIY = iy; lastIZ = iz
-        ix     += stepX
-        tMaxX  += tDeltaX
+        lx = ix; ly = iy; lz = iz
+        ix += stepX; tMaxX += tDeltaX
       } else if (tMaxY < tMaxZ) {
-        lastIX = ix; lastIY = iy; lastIZ = iz
-        iy     += stepY
-        tMaxY  += tDeltaY
+        lx = ix; ly = iy; lz = iz
+        iy += stepY; tMaxY += tDeltaY
       } else {
-        lastIX = ix; lastIY = iy; lastIZ = iz
-        iz     += stepZ
-        tMaxZ  += tDeltaZ
+        lx = ix; ly = iy; lz = iz
+        iz += stepZ; tMaxZ += tDeltaZ
       }
 
       const block = this.world.getBlockWorld(ix, iy, iz)
       if (block !== BLOCKS.AIR && block > 0) {
         return {
-          hit:    { x: ix,     y: iy,     z: iz     },
-          before: { x: lastIX, y: lastIY, z: lastIZ },
+          hit:    { x: ix, y: iy, z: iz },
+          before: { x: lx, y: ly, z: lz },
         }
       }
     }
@@ -284,8 +287,7 @@ export class Player {
 
     const { x, y, z } = result.before
 
-    // Don't place if any part of the target block overlaps the player AABB (#16)
-    // Check: does [x, x+1] overlap [pos.x-w, pos.x+w], and same for z, and y in [pos.y, pos.y+height]?
+    // Full AABB overlap check — prevents placing inside the player (#16)
     const hw = PLAYER_WIDTH / 2
     const overlapX = x + 1 > this.pos.x - hw && x < this.pos.x + hw
     const overlapZ = z + 1 > this.pos.z - hw && z < this.pos.z + hw
