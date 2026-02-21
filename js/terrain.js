@@ -3,10 +3,10 @@ import { PerlinNoise } from './noise.js'
 
 const noise = new PerlinNoise(42) // change 42 to any number for a different world
 
-const SEA_LEVEL = 12
+const SEA_LEVEL  = 12
 const STONE_DEPTH = 4 // how many blocks of dirt before stone
 
-// Deterministic tree check: returns true for ~8% of grass positions
+// Deterministic tree check — ~8% of eligible positions get a tree
 function treeAt(wx, wz) {
   const h = Math.abs(Math.sin(wx * 127.1 + wz * 311.7) * 43758.5) % 1
   return h > 0.92
@@ -22,13 +22,14 @@ export function getTerrainHeight(wx, wz) {
 export function generateChunk(chunk) {
   const { cx, cz } = chunk
 
-  // Build a height cache so getTerrainHeight is called once per column, not twice
+  // Height cache — getTerrainHeight called once per column, not twice (#10)
   const heights = new Int32Array(CHUNK_SIZE * CHUNK_SIZE)
   for (let z = 0; z < CHUNK_SIZE; z++) {
     for (let x = 0; x < CHUNK_SIZE; x++) {
-      const wx = cx * CHUNK_SIZE + x
-      const wz = cz * CHUNK_SIZE + z
-      heights[z * CHUNK_SIZE + x] = getTerrainHeight(wx, wz)
+      heights[z * CHUNK_SIZE + x] = getTerrainHeight(
+        cx * CHUNK_SIZE + x,
+        cz * CHUNK_SIZE + z
+      )
     }
   }
 
@@ -41,7 +42,7 @@ export function generateChunk(chunk) {
         let block
 
         if (y === 0) {
-          block = BLOCKS.STONE               // bedrock layer
+          block = BLOCKS.STONE
         } else if (y < terrainH - STONE_DEPTH) {
           block = BLOCKS.STONE
         } else if (y < terrainH) {
@@ -49,7 +50,7 @@ export function generateChunk(chunk) {
         } else if (y === terrainH) {
           block = terrainH <= SEA_LEVEL + 1 ? BLOCKS.SAND : BLOCKS.GRASS
         } else if (y <= SEA_LEVEL) {
-          block = BLOCKS.WATER               // fill below sea level with water (fixed: no redundant AIR check)
+          block = BLOCKS.WATER // (#1) fixed: was `else if (y <= SEA_LEVEL && block === BLOCKS.AIR)`
         } else {
           block = BLOCKS.AIR
         }
@@ -59,11 +60,11 @@ export function generateChunk(chunk) {
     }
   }
 
-  // Second pass: trees (reads from height cache, no recomputation)
+  // Second pass: trees — reads height cache, no recomputation (#10)
   for (let z = 0; z < CHUNK_SIZE; z++) {
     for (let x = 0; x < CHUNK_SIZE; x++) {
-      const wx = cx * CHUNK_SIZE + x
-      const wz = cz * CHUNK_SIZE + z
+      const wx      = cx * CHUNK_SIZE + x
+      const wz      = cz * CHUNK_SIZE + z
       const terrainH = heights[z * CHUNK_SIZE + x]
 
       if (terrainH > SEA_LEVEL + 2 && treeAt(wx, wz)) {
@@ -73,29 +74,22 @@ export function generateChunk(chunk) {
   }
 }
 
-// Places a tree using local chunk coordinates.
-// Leaf offsets that fall outside [0, CHUNK_SIZE) are skipped — cross-chunk
-// leaves are handled correctly by not writing out-of-bounds data.
-// (chunk.setBlock already guards bounds, so no corruption occurs.)
+// Out-of-bounds leaf writes are silently discarded by chunk.setBlock (#4)
 function placeTree(chunk, x, y, z) {
   const trunkHeight = 4
 
-  // Trunk
   for (let i = 0; i < trunkHeight; i++) {
     chunk.setBlock(x, y + i, z, BLOCKS.WOOD)
   }
 
-  // Leaf canopy: 5x5 for dy=-1..1, trimmed corners, plus a top cap
   const top = y + trunkHeight
   for (let dy = -1; dy <= 1; dy++) {
     for (let dx = -2; dx <= 2; dx++) {
       for (let dz = -2; dz <= 2; dz++) {
-        if (Math.abs(dx) === 2 && Math.abs(dz) === 2) continue // trim corners
-        // Out-of-chunk writes are silently discarded by chunk.setBlock bounds check
+        if (Math.abs(dx) === 2 && Math.abs(dz) === 2) continue
         chunk.setBlock(x + dx, top + dy, z + dz, BLOCKS.LEAVES)
       }
     }
   }
-  // Top cap
   chunk.setBlock(x, top + 2, z, BLOCKS.LEAVES)
 }
